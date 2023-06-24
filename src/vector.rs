@@ -1,0 +1,54 @@
+use anyhow::Result;
+use qdrant_client::client::{QdrantClient, QdrantClientConfig};
+use qdrant_client::prelude::{CreateCollection, Distance};
+use qdrant_client::qdrant::{VectorParams, VectorsConfig};
+use qdrant_client::qdrant::vectors_config::Config;
+use shuttle_secrets::SecretStore;
+
+use crate::errors::SetupError;
+
+static COLLECTION: &str = "docs";
+
+pub struct VectorDB {
+    client: QdrantClient,
+    id: u64,
+}
+
+impl VectorDB {
+    pub fn new(secrets: &SecretStore) -> Result<Self> {
+        let qdrant_token = secrets
+            .get("QDRANT_TOKEN")
+            .ok_or(SetupError("QDRANT_TOKEN not available"))?;
+        let qdrant_url = secrets
+            .get("QDRANT_URL")
+            .ok_or(SetupError("QDRANT_URL not available"))?;
+
+        let mut qdrant_config = QdrantClientConfig::from_url(&qdrant_url);
+        qdrant_config.set_api_key(&qdrant_token);
+
+        let client = QdrantClient::new(Some(qdrant_config))?;
+        return Ok(Self { client, id: 0 });
+    }
+
+    pub async fn rest_collection(&self) -> Result<()> {
+        self.client.delete_collection(COLLECTION).await?;
+
+        self.client
+            .create_collection(&CreateCollection {
+                collection_name: COLLECTION.to_string(),
+                vectors_config: Some(VectorsConfig {
+                    config: Some(Config::Params(VectorParams {
+                        size: 1536, // this number comes from the openapi spec
+                        distance: Distance::Cosine.into(),
+                        hnsw_config: None,
+                        quantization_config: None,
+                        on_disk: None,
+                    }))
+                }),
+                ..Default::default()
+            })
+            .await?;
+
+        Ok(())
+    }
+}

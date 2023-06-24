@@ -27,6 +27,7 @@ impl File {
         }
     }
 
+    // TODO: we can also parse until there is a '.' for each sentence
     pub fn parse(&mut self) {
         let mut contents = Vec::new();
         let mut state = FileState::None;
