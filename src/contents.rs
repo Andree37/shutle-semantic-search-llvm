@@ -103,9 +103,9 @@ pub fn load_files_from_dir(dir: PathBuf, prefix: &PathBuf, ending: &str) -> Resu
             let mut sub_files = load_files_from_dir(path, prefix, ending)?;
             files.append(&mut sub_files);
         } else if path.is_file() && path.has_file_ext(ending) {
-            let path = Path::new(&path).strip_prefix(prefix)?.to_owned();
             println!("Loading file: {:?}", path);
             let contents = fs::read_to_string(&path)?;
+            let path = Path::new(&path).strip_prefix(prefix)?.to_owned();
             let key = path.to_str().ok_or(NotAvailableError {})?;
             let mut file = File::new(key.to_string(), contents);
             file.parse();
