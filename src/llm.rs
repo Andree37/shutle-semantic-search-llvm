@@ -1,4 +1,5 @@
 use anyhow::Result;
+use openai::chat::{ChatCompletion, ChatCompletionMessage, ChatCompletionMessageRole};
 use openai::embeddings::{Embedding, Embeddings};
 use shuttle_secrets::SecretStore;
 
@@ -31,5 +32,24 @@ pub async fn embed_sentence(prompt: &str) -> Result<Embedding> {
             println!("{:?}", e.to_string());
             EmbeddingError {}.into()
         });
+}
+
+pub async fn chat(prompt: &str, contents: &str) -> Result<ChatCompletion> {
+    let question = format!("{}\nContext: {}\nBe concise.", prompt, contents);
+
+    // message is where we would append the context so we can have a proper converstaion
+    return ChatCompletion::builder("gpt-3.5-turbo", vec![
+        ChatCompletionMessage {
+            role: ChatCompletionMessageRole::User,
+            content: Some(question),
+            name: Some("shuttle".to_string()),
+            function_call: None,
+        }
+    ])
+        .temperature(0.0)
+        .user("shuttle")
+        .create()
+        .await
+        .map_err(|_| { EmbeddingError {}.into() });
 }
 

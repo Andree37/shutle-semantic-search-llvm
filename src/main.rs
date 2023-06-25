@@ -45,16 +45,27 @@ IntoResponse {
     let prompt = prompt.prompt;
     let embedding = match llm::embed_sentence(&prompt).await {
         Ok(embedding) => embedding,
-        Err(_) => return "No embedding possible",
+        Err(_) => return "No embedding possible".to_string(),
     };
+
     let scored_point = match app_state.vector_db.search(embedding).await {
         Ok(scored_point) => scored_point,
-        Err(_) => return "No search possible",
+        Err(_) => return "No search possible".to_string(),
     };
-    let contents = app_state.files.get_contents(&scored_point)?;
-    
-    scored_point.payload.print();
-    return "Found";
+
+    let contents = match app_state.files.get_contents(&scored_point) {
+        Some(contents) => contents,
+        None => return "No contents found".to_string(),
+    };
+
+    let chat_completion = match llm::chat(&prompt, &contents).await {
+        Ok(chat_completion) => chat_completion,
+        Err(_) => return "No chat possible".to_string(),
+    };
+
+    println!("{:?}", chat_completion.usage);
+    let choice = chat_completion.choices[0].clone();
+    return choice.message.content.unwrap().to_string();
 }
 
 
