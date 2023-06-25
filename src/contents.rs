@@ -79,6 +79,20 @@ impl File {
     }
 }
 
+trait HasFileExt {
+    fn has_file_ext(&self, ext: &str) -> bool;
+}
+
+impl HasFileExt for PathBuf {
+    fn has_file_ext(&self, ext: &str) -> bool {
+        return if let Some(path) = self.to_str() {
+            path.ends_with(ext)
+        } else {
+            false
+        };
+    }
+}
+
 pub fn load_files_from_dir(dir: PathBuf, prefix: &PathBuf, ending: &str) -> Result<Vec<File>> {
     let mut files = Vec::new();
 
@@ -88,7 +102,7 @@ pub fn load_files_from_dir(dir: PathBuf, prefix: &PathBuf, ending: &str) -> Resu
         if path.is_dir() {
             let mut sub_files = load_files_from_dir(path, prefix, ending)?;
             files.append(&mut sub_files);
-        } else if path.is_file() && path.extension() == Some(ending.as_ref()) {
+        } else if path.is_file() && path.has_file_ext(ending) {
             let path = Path::new(&path).strip_prefix(prefix)?.to_owned();
             println!("Loading file: {:?}", path);
             let contents = fs::read_to_string(&path)?;
