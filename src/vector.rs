@@ -1,11 +1,14 @@
 use anyhow::Result;
-use qdrant_client::client::{QdrantClient, QdrantClientConfig};
+use openai::embeddings::Embedding;
+use qdrant_client::client::{Payload, QdrantClient, QdrantClientConfig};
 use qdrant_client::prelude::{CreateCollection, Distance};
-use qdrant_client::qdrant::{VectorParams, VectorsConfig};
+use qdrant_client::qdrant::{PointStruct, VectorParams, VectorsConfig};
 use qdrant_client::qdrant::vectors_config::Config;
+use serde_json::json;
 use shuttle_secrets::SecretStore;
 
-use crate::errors::SetupError;
+use crate::contents::File;
+use crate::errors::{EmbeddingError, SetupError};
 
 static COLLECTION: &str = "docs";
 
@@ -30,7 +33,8 @@ impl VectorDB {
         return Ok(Self { client, id: 0 });
     }
 
-    pub async fn rest_collection(&self) -> Result<()> {
+    // TODO: we could also not delete it, but just update it instead
+    pub async fn reset_collection(&self) -> Result<()> {
         self.client.delete_collection(COLLECTION).await?;
 
         self.client
@@ -49,6 +53,20 @@ impl VectorDB {
             })
             .await?;
 
+        Ok(())
+    }
+
+    pub async fn upsert_embedding(&mut self, embedding: Embedding, file: &File) -> Result<()> {
+        let payload: Payload = json!({
+            "id": file.path.clone(),
+        })
+            .try_into()
+            .map_err(|_| EmbeddingError {})?;
+
+        let vec: Vec<f32> = embedding.vec.iter().map(|&x| x as f32).collect();
+        let points = vec![PointStruct::new(self.id, vec, payload)];
+        self.client.upsert_points(COLLECTION, points, None).await?;
+        self.id += 1;
         Ok(())
     }
 }
