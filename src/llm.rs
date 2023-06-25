@@ -16,10 +16,11 @@ pub fn setup(secrets: &SecretStore) -> Result<()> {
 
 pub async fn embed_file(file: &File) -> Result<Embeddings> {
     let sentence_as_str: Vec<&str> = file.sentences.iter().map(|s| s.as_str()).collect();
-    let embeddings = Embeddings::create("text-embedding-ada-002", sentence_as_str, "shuttle")
+    return Embeddings::create("text-embedding-ada-002", sentence_as_str, "shuttle")
         .await
-        .map_err(|_| EmbeddingError {}.into());
-
-    return embeddings;
+        .map_err(|e| {
+            println!("{:?}", e.to_string());
+            EmbeddingError {}.into()
+        });
 }
 

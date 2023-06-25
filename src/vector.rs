@@ -30,6 +30,7 @@ impl VectorDB {
         qdrant_config.set_api_key(&qdrant_token);
 
         let client = QdrantClient::new(Some(qdrant_config))?;
+
         return Ok(Self { client, id: 0 });
     }
 
@@ -47,13 +48,13 @@ impl VectorDB {
                         hnsw_config: None,
                         quantization_config: None,
                         on_disk: None,
-                    }))
+                    })),
                 }),
                 ..Default::default()
             })
             .await?;
 
-        Ok(())
+        return Ok(());
     }
 
     pub async fn upsert_embedding(&mut self, embedding: Embedding, file: &File) -> Result<()> {

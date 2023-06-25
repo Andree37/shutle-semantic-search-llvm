@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter, write};
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub struct NotAvailableError;
