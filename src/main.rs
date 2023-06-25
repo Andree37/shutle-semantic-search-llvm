@@ -8,12 +8,14 @@ use axum::routing::post;
 use tower_http::services::ServeDir;
 
 use crate::contents::File;
+use crate::finder::Finder;
 use crate::vector::VectorDB;
 
 mod contents;
 mod errors;
 mod vector;
 mod llm;
+mod finder;
 
 
 struct AppState {
@@ -49,6 +51,8 @@ IntoResponse {
         Ok(scored_point) => scored_point,
         Err(_) => return "No search possible",
     };
+    let contents = app_state.files.get_contents(&scored_point)?;
+    
     scored_point.payload.print();
     return "Found";
 }
