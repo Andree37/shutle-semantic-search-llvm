@@ -1,21 +1,23 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Result;
 
 use crate::errors::NotAvailableError;
 
-enum FileState {
-    None,
-    CodeBlock,
-    Sentence,
-    Meta,
-}
-
 pub struct File {
     pub path: String,
     pub contents: String,
     pub sentences: Vec<String>,
+}
+
+enum FileState {
+    None,
+    CodeBlock,
+    Sentence,
+    Comments,
 }
 
 impl File {
@@ -27,7 +29,6 @@ impl File {
         }
     }
 
-    // TODO: we can also parse until there is a '.' for each sentence
     pub fn parse(&mut self) {
         let mut contents = Vec::new();
         let mut state = FileState::None;
@@ -42,7 +43,7 @@ impl File {
                         sentence.push_str(line);
                         sentence.push('\n');
                     } else if line.starts_with("---") {
-                        state = FileState::Meta;
+                        state = FileState::Comments;
                     } else if !line.starts_with('#') && !line.is_empty() {
                         state = FileState::Sentence;
                         sentence = String::new();
@@ -58,7 +59,7 @@ impl File {
                         state = FileState::None;
                     }
                 }
-                FileState::Meta => {
+                FileState::Comments => {
                     if line.starts_with("---") {
                         state = FileState::None;
                     }
@@ -80,30 +81,28 @@ impl File {
 }
 
 trait HasFileExt {
-    fn has_file_ext(&self, ext: &str) -> bool;
+    fn has_file_extension(&self, ending: &str) -> bool;
 }
 
-impl HasFileExt for PathBuf {
-    fn has_file_ext(&self, ext: &str) -> bool {
-        return if let Some(path) = self.to_str() {
-            path.ends_with(ext)
-        } else {
-            false
-        };
+impl HasFileExt for Path {
+    fn has_file_extension(&self, ending: &str) -> bool {
+        if let Some(path) = self.to_str() {
+            return path.ends_with(ending);
+        }
+        return false;
     }
 }
 
-pub fn load_files_from_dir(dir: PathBuf, prefix: &PathBuf, ending: &str) -> Result<Vec<File>> {
+// Load files from directory by ending
+pub fn load_files_from_dir(dir: PathBuf, ending: &str, prefix: &PathBuf) -> Result<Vec<File>> {
     let mut files = Vec::new();
-
-    let dir = fs::read_dir(dir)?;
-    for entry in dir {
+    for entry in fs::read_dir(dir)? {
         let path = entry?.path();
         if path.is_dir() {
-            let mut sub_files = load_files_from_dir(path, prefix, ending)?;
+            let mut sub_files = load_files_from_dir(path, ending, prefix)?;
             files.append(&mut sub_files);
-        } else if path.is_file() && path.has_file_ext(ending) {
-            println!("Loading file: {:?}", path);
+        } else if path.is_file() && path.has_file_extension(ending) {
+            println!("Path: {:?}", path);
             let contents = fs::read_to_string(&path)?;
             let path = Path::new(&path).strip_prefix(prefix)?.to_owned();
             let key = path.to_str().ok_or(NotAvailableError {})?;
@@ -112,6 +111,5 @@ pub fn load_files_from_dir(dir: PathBuf, prefix: &PathBuf, ending: &str) -> Resu
             files.push(file);
         }
     }
-
     return Ok(files);
 }

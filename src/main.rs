@@ -1,36 +1,29 @@
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
-use axum::{Json, Router};
-use axum::extract::State;
-use axum::response::IntoResponse;
-use axum::routing::post;
+use axum::{extract::Json, extract::State, response::IntoResponse, Router, routing::post};
+use axum_macros::debug_handler;
+use futures::Stream;
+use openai::chat::ChatCompletionDelta;
+use serde::Deserialize;
+use tokio::sync::mpsc::Receiver;
+use tokio_stream::StreamExt;
+use tokio_stream::wrappers::ReceiverStream;
 use tower_http::services::ServeDir;
 
-use crate::contents::File;
-use crate::finder::Finder;
-use crate::vector::VectorDB;
+use contents::File;
+use errors::PromptError;
+use finder::Finder;
+use vector::VectorDB;
 
 mod contents;
 mod errors;
-mod vector;
-mod llm;
 mod finder;
-
-
-struct AppState {
-    vector_db: VectorDB,
-    files: Vec<File>,
-}
-
-#[derive(serde::Deserialize)]
-struct Prompt {
-    prompt: String,
-}
+mod llm;
+mod vector;
 
 async fn embed_documentation(vector_db: &mut VectorDB, files: &Vec<File>) -> anyhow::Result<()> {
     for file in files {
-        let embeddings = llm::embed_file(&file).await?;
+        let embeddings = llm::embed_file(file).await?;
         println!("Embedding: {:?}", file.path);
         for embedding in embeddings.data {
             vector_db.upsert_embedding(embedding, file).await?;
@@ -40,66 +33,88 @@ async fn embed_documentation(vector_db: &mut VectorDB, files: &Vec<File>) -> any
     return Ok(());
 }
 
-async fn prompt(State(app_state): State<Arc<AppState>>, Json(prompt): Json<Prompt>) -> impl
-IntoResponse {
-    let prompt = prompt.prompt;
-    let embedding = match llm::embed_sentence(&prompt).await {
-        Ok(embedding) => embedding,
-        Err(_) => return "No embedding possible".to_string(),
-    };
-
-    let scored_point = match app_state.vector_db.search(embedding).await {
-        Ok(scored_point) => scored_point,
-        Err(_) => return "No search possible".to_string(),
-    };
-
-    let contents = match app_state.files.get_contents(&scored_point) {
-        Some(contents) => contents,
-        None => return "No contents found".to_string(),
-    };
-
-    let chat_completion = match llm::chat(&prompt, &contents).await {
-        Ok(chat_completion) => chat_completion,
-        Err(_) => return "No chat possible".to_string(),
-    };
-
-    println!("{:?}", chat_completion.usage);
-    let choice = chat_completion.choices[0].clone();
-    return choice.message.content.unwrap().to_string();
+#[derive(Deserialize)]
+struct Prompt {
+    prompt: String,
 }
 
+fn chat_completion_stream(
+    chat_completion: Receiver<ChatCompletionDelta>,
+) -> impl Stream<Item=String> {
+    return ReceiverStream::new(chat_completion)
+        .map(|completion| completion.choices)
+        .map(|choices| {
+            choices
+                .into_iter()
+                .map(|choice| choice.delta.content.unwrap_or("\n".to_string()))
+                .collect()
+        });
+}
+
+fn error_stream() -> impl Stream<Item=String> {
+    futures::stream::once(async move { "Error with your prompt".to_string() })
+}
+
+async fn get_contents(
+    prompt: &str,
+    app_state: &AppState,
+) -> anyhow::Result<Receiver<ChatCompletionDelta>> {
+    let embedding = llm::embed_sentence(prompt).await?;
+    let result = app_state.vector_db.search(embedding).await?;
+    println!("Result: {:?}", result);
+    let contents = app_state
+        .files
+        .get_contents(&result)
+        .ok_or(PromptError {})?;
+    return llm::chat_stream(prompt, contents.as_str()).await;
+}
+
+#[debug_handler]
+async fn prompt(
+    State(app_state): State<Arc<AppState>>,
+    Json(prompt): Json<Prompt>,
+) -> impl IntoResponse {
+    let prompt = prompt.prompt;
+    let chat_completion = get_contents(&prompt, &app_state).await;
+
+    if let Ok(chat_completion) = chat_completion {
+        return axum_streams::StreamBodyAs::text(chat_completion_stream(chat_completion));
+    }
+
+    return axum_streams::StreamBodyAs::text(error_stream());
+}
+
+struct AppState {
+    files: Vec<File>,
+    vector_db: VectorDB,
+}
 
 #[shuttle_runtime::main]
 async fn axum(
-    #[shuttle_static_folder::StaticFolder(folder = "static")] assets: PathBuf,
+    #[shuttle_static_folder::StaticFolder(folder = "static")] static_folder: PathBuf,
     #[shuttle_static_folder::StaticFolder(folder = "docs")] docs_folder: PathBuf,
     #[shuttle_static_folder::StaticFolder(folder = ".")] prefix: PathBuf,
     #[shuttle_secrets::Secrets] secrets: shuttle_secrets::SecretStore,
 ) -> shuttle_axum::ShuttleAxum {
-    let embed = false;
-
-    let files = contents::load_files_from_dir(docs_folder, &prefix, "mdx")?;
-    let mut vector_db = vector::VectorDB::new(&secrets)?;
+    let embedding = false;
     llm::setup(&secrets)?;
+    let mut vector_db = VectorDB::new(&secrets)?;
+    let files = contents::load_files_from_dir(docs_folder, ".mdx", &prefix)?;
 
-    println!("Setup done!");
+    println!("Setup done");
 
-    // We don't need to embed every time, so we can skip this step
-    if embed {
+    if embedding {
         vector_db.reset_collection().await?;
         embed_documentation(&mut vector_db, &files).await?;
+        println!("Embedding done");
     }
 
-    println!("Embeddings done!");
-
-    let app_state = AppState {
-        vector_db,
-        files,
-    };
+    let app_state = AppState { files, vector_db };
     let app_state = Arc::new(app_state);
 
-    let router = Router::new().route("/prompt", post(prompt))
-        .nest_service("/", ServeDir::new(assets))
+    let router = Router::new()
+        .route("/prompt", post(prompt))
+        .nest_service("/", ServeDir::new(static_folder))
         .with_state(app_state);
-    Ok(router.into())
+    return Ok(router.into());
 }

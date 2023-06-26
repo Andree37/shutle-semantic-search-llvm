@@ -1,5 +1,4 @@
-use qdrant_client::qdrant::ScoredPoint;
-use qdrant_client::qdrant::value::Kind;
+use qdrant_client::qdrant::{ScoredPoint, value::Kind};
 
 use crate::contents::File;
 
@@ -21,10 +20,10 @@ impl Finder for Vec<File> {
     fn get_contents(&self, result: &ScoredPoint) -> Option<String> {
         let text = result.payload.get("id")?;
         let kind = text.kind.to_owned()?;
-        return if let Kind::StringValue(value) = kind {
+        if let Kind::StringValue(value) = kind {
             self.find(&value)
         } else {
-            None
-        };
+            return None;
+        }
     }
 }

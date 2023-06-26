@@ -39,39 +39,40 @@
 </head>
 
 <body>
-    <div class="wrapper">
-        <h1>Shuttle Semantic Search</h1>
-        <input type="text" id="input" value="">
-        <p id="output"></p>
-    </div>
-    <script>
-        async function update(reader) {
-            const decoder = new TextDecoder();
-            while (true) {
-                const {value, done} = await reader.read();
-                if (done) break;
-                const chunk = decoder.decode(value);
-                document.querySelector("#output").innerText += chunk;
-            }
+<div class="wrapper">
+    <h1>Shuttle Semantic Search</h1>
+    <input id="input" type="text" value="">
+    <p id="output"></p>
+</div>
+<script>
+    async function update(reader) {
+        const decoder = new TextDecoder();
+        while (true) {
+            const {value, done} = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value);
+            document.querySelector("#output").innerText += chunk;
         }
-        document.querySelector("#input")?.addEventListener("keypress", (e) => {
-            if (e.keyCode == 13) {
-                const input = document.querySelector("#input").value;
-                document.querySelector("#output").innerText = "Waiting...";
-                const data = fetch("/prompt", {
-                    method: "POST",
-                    body: JSON.stringify({prompt: input}),
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                }).then(res => res.body.getReader())
-                    .then(reader => {
-                        document.querySelector("#output").innerText = "";
-                        update(reader);
-                    });
-            }
-        })
-    </script>
+    }
+
+    document.querySelector("#input")?.addEventListener("keypress", (e) => {
+        if (e.keyCode == 13) {
+            const input = document.querySelector("#input").value;
+            document.querySelector("#output").innerText = "Waiting...";
+            const data = fetch("/prompt", {
+                method: "POST",
+                body: JSON.stringify({prompt: input}),
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            }).then(res => res.body.getReader())
+                .then(reader => {
+                    document.querySelector("#output").innerText = "";
+                    update(reader);
+                });
+        }
+    })
+</script>
 </body>
 
 </html>

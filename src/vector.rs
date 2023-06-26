@@ -1,15 +1,19 @@
 use anyhow::Result;
 use openai::embeddings::Embedding;
-use qdrant_client::client::{Payload, QdrantClient, QdrantClientConfig};
-use qdrant_client::prelude::{CreateCollection, Distance};
-use qdrant_client::qdrant::{PointStruct, ScoredPoint, SearchPoints, VectorParams, VectorsConfig, WithPayloadSelector};
-use qdrant_client::qdrant::vectors_config::Config;
-use qdrant_client::qdrant::with_payload_selector::SelectorOptions;
+use qdrant_client::{
+    prelude::{Payload, QdrantClient, QdrantClientConfig},
+    qdrant::{
+        CreateCollection, Distance, PointStruct, ScoredPoint,
+        SearchPoints, VectorParams, vectors_config::Config, VectorsConfig, with_payload_selector::SelectorOptions, WithPayloadSelector,
+    },
+};
 use serde_json::json;
 use shuttle_secrets::SecretStore;
 
-use crate::contents::File;
-use crate::errors::{EmbeddingError, SetupError};
+use crate::{
+    contents::File,
+    errors::{EmbeddingError, SetupError},
+};
 
 static COLLECTION: &str = "docs";
 
@@ -35,7 +39,6 @@ impl VectorDB {
         return Ok(Self { client, id: 0 });
     }
 
-    // TODO: we could also not delete it, but just update it instead
     pub async fn reset_collection(&self) -> Result<()> {
         self.client.delete_collection(COLLECTION).await?;
 
@@ -44,7 +47,7 @@ impl VectorDB {
                 collection_name: COLLECTION.to_string(),
                 vectors_config: Some(VectorsConfig {
                     config: Some(Config::Params(VectorParams {
-                        size: 1536, // this number comes from the openapi spec
+                        size: 1536,
                         distance: Distance::Cosine.into(),
                         hnsw_config: None,
                         quantization_config: None,
@@ -65,18 +68,22 @@ impl VectorDB {
             .try_into()
             .map_err(|_| EmbeddingError {})?;
 
+        println!("Embedded: {}", file.path);
+
         let vec: Vec<f32> = embedding.vec.iter().map(|&x| x as f32).collect();
+
         let points = vec![PointStruct::new(self.id, vec, payload)];
         self.client.upsert_points(COLLECTION, points, None).await?;
         self.id += 1;
-        Ok(())
+
+        return Ok(());
     }
 
     pub async fn search(&self, embedding: Embedding) -> Result<ScoredPoint> {
         let vec: Vec<f32> = embedding.vec.iter().map(|&x| x as f32).collect();
 
         let payload_selector = WithPayloadSelector {
-            selector_options: Some(SelectorOptions::Enable(true))
+            selector_options: Some(SelectorOptions::Enable(true)),
         };
 
         let search_points = SearchPoints {

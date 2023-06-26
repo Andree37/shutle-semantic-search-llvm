@@ -1,55 +1,68 @@
 use anyhow::Result;
-use openai::chat::{ChatCompletion, ChatCompletionMessage, ChatCompletionMessageRole};
-use openai::embeddings::{Embedding, Embeddings};
+use openai::{
+    chat::{ChatCompletion, ChatCompletionBuilder, ChatCompletionDelta, ChatCompletionMessage},
+    embeddings::{Embedding, Embeddings},
+};
 use shuttle_secrets::SecretStore;
+use tokio::sync::mpsc::Receiver;
 
-use crate::contents::File;
-use crate::errors::{EmbeddingError, SetupError};
+use crate::{contents::File, errors::EmbeddingError, errors::SetupError};
+
+type Conversation = Receiver<ChatCompletionDelta>;
 
 pub fn setup(secrets: &SecretStore) -> Result<()> {
-    let open_ai_key = secrets
+    let openai_key = secrets
         .get("OPEN_AI_KEY")
-        .ok_or(SetupError("OPEN_AI_KEY not available"))?;
-
-    openai::set_key(open_ai_key);
+        .ok_or(SetupError("OPENAI Key not available"))?;
+    openai::set_key(openai_key);
     return Ok(());
 }
 
 pub async fn embed_file(file: &File) -> Result<Embeddings> {
     let sentence_as_str: Vec<&str> = file.sentences.iter().map(|s| s.as_str()).collect();
-    return Embeddings::create("text-embedding-ada-002", sentence_as_str, "shuttle")
+    return Embeddings::create("text-embedding-ada-002", sentence_as_str, "stefan")
         .await
-        .map_err(|e| {
-            println!("{:?}", e.to_string());
-            EmbeddingError {}.into()
-        });
+        .map_err(|_| EmbeddingError {}.into());
 }
 
 pub async fn embed_sentence(prompt: &str) -> Result<Embedding> {
-    return Embedding::create("text-embedding-ada-002", prompt, "shuttle")
+    return Embedding::create("text-embedding-ada-002", prompt, "stefan")
         .await
-        .map_err(|e| {
-            println!("{:?}", e.to_string());
-            EmbeddingError {}.into()
-        });
+        .map_err(|_| EmbeddingError {}.into());
 }
 
-pub async fn chat(prompt: &str, contents: &str) -> Result<ChatCompletion> {
-    let question = format!("{}\nContext: {}\nBe concise.", prompt, contents);
+pub async fn chat_stream(prompt: &str, contents: &str) -> Result<Conversation> {
+    let content = format!("{}\n Context: {}\n Be concise", prompt, contents);
 
-    // message is where we would append the context so we can have a proper converstaion
-    return ChatCompletion::builder("gpt-3.5-turbo", vec![
-        ChatCompletionMessage {
-            role: ChatCompletionMessageRole::User,
-            content: Some(question),
-            name: Some("shuttle".to_string()),
-            function_call: None,
-        }
-    ])
+    return ChatCompletionBuilder::default()
+        .model("gpt-3.5-turbo")
         .temperature(0.0)
-        .user("shuttle")
+        .user("stefan")
+        .messages(vec![ChatCompletionMessage {
+            role: openai::chat::ChatCompletionMessageRole::User,
+            content: Some(content),
+            name: Some("stefan".to_string()),
+            function_call: None,
+        }])
+        .create_stream()
+        .await
+        .map_err(|_| EmbeddingError {}.into());
+}
+
+pub async fn _chat(prompt: &str, contents: &str) -> Result<ChatCompletion> {
+    let content = format!("{}\n Context: {}\n Be concise", prompt, contents);
+
+    return ChatCompletionBuilder::default()
+        .model("gpt-3.5-turbo")
+        .temperature(0.0)
+        .user("stefan")
+        .messages(vec![ChatCompletionMessage {
+            role: openai::chat::ChatCompletionMessageRole::User,
+            content: Some(content),
+            name: Some("stefan".to_string()),
+            function_call: None,
+        }])
         .create()
         .await
-        .map_err(|_| { EmbeddingError {}.into() });
+        .map_err(|_| EmbeddingError {}.into());
 }
-
