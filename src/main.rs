@@ -23,7 +23,10 @@ mod vector;
 
 async fn embed_documentation(vector_db: &mut VectorDB, files: &Vec<File>) -> anyhow::Result<()> {
     for file in files {
-        let embeddings = llm::embed_file(file).await?;
+        let embeddings = match llm::embed_file(file).await {
+            Ok(e) => e,
+            Err(_) => { continue; }
+        };
         println!("Embedding: {:?}", file.path);
         for embedding in embeddings.data {
             vector_db.upsert_embedding(embedding, file).await?;
@@ -92,7 +95,7 @@ struct AppState {
 #[shuttle_runtime::main]
 async fn axum(
     #[shuttle_static_folder::StaticFolder(folder = "static")] static_folder: PathBuf,
-    #[shuttle_static_folder::StaticFolder(folder = "docs")] docs_folder: PathBuf,
+    #[shuttle_static_folder::StaticFolder(folder = "docs-akash")] docs_folder: PathBuf,
     #[shuttle_static_folder::StaticFolder(folder = ".")] prefix: PathBuf,
     #[shuttle_secrets::Secrets] secrets: shuttle_secrets::SecretStore,
 ) -> shuttle_axum::ShuttleAxum {

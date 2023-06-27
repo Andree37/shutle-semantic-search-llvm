@@ -20,13 +20,13 @@ pub fn setup(secrets: &SecretStore) -> Result<()> {
 
 pub async fn embed_file(file: &File) -> Result<Embeddings> {
     let sentence_as_str: Vec<&str> = file.sentences.iter().map(|s| s.as_str()).collect();
-    return Embeddings::create("text-embedding-ada-002", sentence_as_str, "stefan")
+    return Embeddings::create("text-embedding-ada-002", sentence_as_str, "shuttle")
         .await
-        .map_err(|_| EmbeddingError {}.into());
+        .map_err(|e| EmbeddingError {}.into());
 }
 
 pub async fn embed_sentence(prompt: &str) -> Result<Embedding> {
-    return Embedding::create("text-embedding-ada-002", prompt, "stefan")
+    return Embedding::create("text-embedding-ada-002", prompt, "shuttle")
         .await
         .map_err(|_| EmbeddingError {}.into());
 }
@@ -37,11 +37,11 @@ pub async fn chat_stream(prompt: &str, contents: &str) -> Result<Conversation> {
     return ChatCompletionBuilder::default()
         .model("gpt-3.5-turbo")
         .temperature(0.0)
-        .user("stefan")
+        .user("shuttle")
         .messages(vec![ChatCompletionMessage {
             role: openai::chat::ChatCompletionMessageRole::User,
             content: Some(content),
-            name: Some("stefan".to_string()),
+            name: Some("shuttle".to_string()),
             function_call: None,
         }])
         .create_stream()
@@ -55,11 +55,11 @@ pub async fn _chat(prompt: &str, contents: &str) -> Result<ChatCompletion> {
     return ChatCompletionBuilder::default()
         .model("gpt-3.5-turbo")
         .temperature(0.0)
-        .user("stefan")
+        .user("shuttle")
         .messages(vec![ChatCompletionMessage {
             role: openai::chat::ChatCompletionMessageRole::User,
             content: Some(content),
-            name: Some("stefan".to_string()),
+            name: Some("shuttle".to_string()),
             function_call: None,
         }])
         .create()
